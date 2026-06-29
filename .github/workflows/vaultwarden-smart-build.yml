@@ -204,7 +204,7 @@ jobs:
       OPENSSL_STATIC: 1
     steps:
       - name: Checkout Vaultwarden source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: dani-garcia/vaultwarden
           ref: ${{ needs.check.outputs.target_tag }}
@@ -227,7 +227,7 @@ jobs:
 
       - name: Restore web-vault cache
         id: webvault_cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: web-vault
           key: web-vault-${{ steps.webvault_version.outputs.web_vault_version }}-v4
@@ -274,7 +274,7 @@ jobs:
       # ~2 min upload time and prevents cache key bloat.
       - name: Save web-vault cache
         if: steps.webvault_cache.outputs.cache-hit != 'true' && success() && env.MODE == 'release'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: web-vault
           key: web-vault-${{ steps.webvault_version.outputs.web_vault_version }}-v4
@@ -305,7 +305,7 @@ jobs:
 
       - name: Restore vcpkg cache
         id: vcpkg_cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: C:\vcpkg\installed\x64-windows-static
           key: vcpkg-openssl-static-${{ steps.vcpkg_version.outputs.commit }}-v4
@@ -345,7 +345,7 @@ jobs:
 
       - name: Save vcpkg cache
         if: steps.vcpkg_check.outputs.skip_vcpkg != 'true' && success()
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: C:\vcpkg\installed\x64-windows-static
           key: vcpkg-openssl-static-${{ steps.vcpkg_version.outputs.commit }}-v4
