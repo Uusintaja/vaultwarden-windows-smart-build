@@ -1,6 +1,6 @@
 # Vaultwarden Smart Build
-# Windows one‑click workflow: auto‑track upstream, auto‑release, auto‑cleanup.
-# Modes: schedule (daily auto‑track with smart skip) / workflow_dispatch (manual, optional release|latest|custom).
+# Windows "auto-version-tracking + auto-publish + auto-cleanup" workflow.
+# Modes: schedule (daily auto-track, smart skip) / workflow_dispatch (manual, release|latest|custom).
 
 name: Vaultwarden Smart Build
 
@@ -25,9 +25,9 @@ on:
         default: false
         type: boolean
 
-# Scheduled and manual release use the same concurrency group (build same version,
-# concurrency avoids wasting Windows quota and prevents cleanup race).
-# latest/custom each have their own group, no blocking between them.
+# Schedule and manual release share one group -> serialized (building the same
+# version concurrently only wastes Windows minutes and causes cleanup races);
+# latest/custom get independent groups and do not block each other.
 concurrency:
   group: vw-${{ github.event.inputs.tag_choice || 'release' }}
   cancel-in-progress: false
@@ -41,9 +41,9 @@ env:
   RELEASE_PREFIX: vw-win-
 
 jobs:
-  # Decision layer: runs on cheap Ubuntu to fetch upstream, validate input,
-  # and decide whether a build is needed. All lightweight logic is placed here;
-  # the Windows runner is only started when a build is actually confirmed.
+  # Decision layer: on cheap ubuntu, fetch upstream, validate inputs, decide
+  # whether to build. All lightweight logic runs here so the Windows runner is
+  # only started when compilation is actually needed.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -114,7 +114,7 @@ jobs:
             custom)
               t="$CUSTOM"
               [ -n "$t" ] || { echo "::error::custom tag required"; exit 1; }
-              # Whitelist characters and block path traversal (injection guard placed in cheap environment)
+              # Character allowlist + path-traversal guard (injection hardening on the cheap runner)
               printf '%s' "$t" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$' \
                 || { echo "::error::custom ref has invalid characters"; exit 1; }
               printf '%s' "$t" | grep -Eq '\.\.|//' \
@@ -127,8 +127,8 @@ jobs:
           esac
           echo "target_tag=$target" >> "$GITHUB_OUTPUT"
 
-      # [Schedule only] Resolve tag → commit short SHA for precise deduplication
-      # (does not rely on cache that may become stale).
+      # [schedule only] Dereference the tag -> short commit sha, for precise
+      # dedup (does not rely on the time-limited actions.cache).
       - name: Resolve target commit sha
         id: deref_sha
         if: github.event_name == 'schedule'
@@ -168,8 +168,8 @@ jobs:
           set -euo pipefail
           should=true; reason="manual"
           if [ "$EVENT_NAME" = "schedule" ]; then
-            # Check own releases for any existing build of this version@commit.
-            # Does not rely on actions/cache LRU behaviour.
+            # Check our own releases for an existing build of this version@commit,
+            # rather than relying on the LRU-evictable actions.cache.
             found=false
             for p in 1 2 3 4 5; do
               j=$(curl -fsSL --retry 3 --retry-delay 3 \
@@ -188,8 +188,8 @@ jobs:
           echo "::notice::decision: should_build=$should reason=$reason"
           echo "should_build=$should" >> "$GITHUB_OUTPUT"
 
-  # Execution layer: compile, package, release, and clean up.
-  # Only started when check decides should_build=true.
+  # Execution layer: compile, package, publish, cleanup.
+  # Started only when check decides should_build=true.
   build:
     needs: check
     if: needs.check.outputs.should_build == 'true'
@@ -204,7 +204,7 @@ jobs:
       OPENSSL_STATIC: 1
     steps:
       - name: Checkout Vaultwarden source
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: dani-garcia/vaultwarden
           ref: ${{ needs.check.outputs.target_tag }}
@@ -227,7 +227,7 @@ jobs:
 
       - name: Restore web-vault cache
         id: webvault_cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: web-vault
           key: web-vault-${{ steps.webvault_version.outputs.web_vault_version }}-v4
@@ -269,31 +269,32 @@ jobs:
           }
           if (-not (Test-Path web-vault/index.html)) { Write-Error "web-vault/index.html missing after extract"; exit 1 }
 
-      # Tiered cache: write back only for release mode. For latest/custom, the
-      # one‑off build (older frontend) will not be reused later, so we only read
-      # to save ~2 minutes of upload and avoid key bloat.
+      # Tiered caching: only release writes back. latest/custom produce one-off
+      # artifacts (older front-ends) that will never be reused; read-only saves
+      # ~2 min upload time and prevents cache key bloat.
       - name: Save web-vault cache
         if: steps.webvault_cache.outputs.cache-hit != 'true' && success() && env.MODE == 'release'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: web-vault
           key: web-vault-${{ steps.webvault_version.outputs.web_vault_version }}-v4
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: vaultwarden -> target
           shared-key: vw-rust-win-v4
-          add-job-id-key: false   # Disable: otherwise job‑id is included in key, breaking cross‑build reuse
-          cache-bin: false        # Disable: otherwise rustup shim is cached and may cause rustc mismatch
-          # Tiered cache: only write back for release mode (same reasoning as above).
+          add-job-id-key: false   # off: otherwise job-id enters the key and breaks cross-build reuse
+          cache-bin: false        # off: otherwise cached rustup shim overrides the fresh toolchain (rustc mismatch)
+          # Tiered cache: only release writes back (same rationale as web-vault).
           save-if: ${{ env.MODE == 'release' }}
 
-      # vcpkg: exact key cache, shared across all modes (OpenSSL version independent of vaultwarden version).
-      # No restore‑keys intentionally: a wide prefix could pull an ABI‑incompatible old OpenSSL after vcpkg upgrade.
+      # vcpkg: exact-key cache, shared across all modes (OpenSSL is independent
+      # of the vaultwarden version and reusable). restore-keys is intentionally
+      # omitted: a wide prefix would pull back an ABI-mismatched old OpenSSL on upgrade.
       - name: Get vcpkg version
         id: vcpkg_version
         shell: pwsh
@@ -304,7 +305,7 @@ jobs:
 
       - name: Restore vcpkg cache
         id: vcpkg_cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: C:\vcpkg\installed\x64-windows-static
           key: vcpkg-openssl-static-${{ steps.vcpkg_version.outputs.commit }}-v4
@@ -325,13 +326,14 @@ jobs:
         shell: pwsh
         run: vcpkg install openssl:x64-windows-static --clean-after-build
 
-      # Explicit OPENSSL_LIB_DIR/INCLUDE_DIR to let openssl‑sys locate the libraries directly,
-      # bypassing vcpkg‑rs discovery. The vcpkg cache stores only installed/x64-windows-static
-      # (the libraries themselves), not installed/vcpkg (status metadata). When Rust cache
-      # is missed and openssl‑sys re‑runs its build script, vcpkg‑rs would crash if the
-      # status metadata is missing. These variables must be set for all modes: scheduled runs
-      # fetch new versions which necessarily miss Rust cache, otherwise the crash would happen
-      # on the main path.
+      # Explicit OPENSSL_LIB_DIR/INCLUDE_DIR let openssl-sys locate the library
+      # directly, bypassing the vcpkg-rs discovery mechanism: the vcpkg cache
+      # stores only installed/x64-windows-static (the lib itself), not
+      # installed/vcpkg (the status metadata). When the Rust cache misses and
+      # openssl-sys re-runs its build-script, vcpkg-rs crashes on the missing
+      # status dir. This MUST be set for all modes: schedule tracks new versions,
+      # which always means a Rust cache miss; otherwise the crash recurs on the
+      # main path.
       - name: Build
         shell: pwsh
         working-directory: vaultwarden
@@ -343,12 +345,13 @@ jobs:
 
       - name: Save vcpkg cache
         if: steps.vcpkg_check.outputs.skip_vcpkg != 'true' && success()
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: C:\vcpkg\installed\x64-windows-static
           key: vcpkg-openssl-static-${{ steps.vcpkg_version.outputs.commit }}-v4
 
-      # Version parsing with fallback: if no reachable tag exists, fall back to "dev".
+      # Version resolution with fallback: a commit with no reachable tag does
+      # not crash, it falls back to "dev".
       - name: Get version
         id: get_version
         shell: pwsh
@@ -366,8 +369,9 @@ jobs:
           "vaultwarden_short_sha=$sha" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           Move-Item -Force .\target\release\vaultwarden.exe $env:GITHUB_WORKSPACE\vaultwarden.exe
 
-      # Actually start the exe for 4 seconds: catches "build succeeds but ABI/static‑link mismatch
-      # causes crash on launch", not just checking file existence.
+      # Actually launch the exe and keep it alive for 4 seconds: catches
+      # "compiled successfully but crashes on launch due to ABI/static-link
+      # mismatch" defects that a mere file-existence check cannot detect.
       - name: Smoke test
         shell: pwsh
         run: |
@@ -405,7 +409,7 @@ jobs:
           "ZIP_SHA256=$hash" | Out-File $env:GITHUB_ENV -Append
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: vaultwarden-${{ steps.get_version.outputs.vaultwarden_version }}-${{ steps.get_version.outputs.vaultwarden_short_sha }}
           path: vaultwarden.zip
@@ -413,8 +417,8 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-      # Release mode makes this the "latest" release; latest/custom are marked as prerelease
-      # so they do not occupy the stable "latest" slot.
+      # make_latest only for release; latest/custom are marked prerelease so they
+      # never steal the "latest release" slot from a stable build.
       - name: Compute release tag
         id: set_release_tag
         shell: bash
@@ -441,7 +445,7 @@ jobs:
           esac
 
       - name: Create Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -457,16 +461,16 @@ jobs:
             - **SHA256**: `${{ env.ZIP_SHA256 }}`
             - **Build run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            Usage: extract and run `vaultwarden.exe`, or use `-w` to point to the `web-vault` directory.
+            Usage: Extract the archive and run `vaultwarden.exe`, or point to the `web-vault` directory with the `-w` flag.
           files: vaultwarden.zip
           make_latest: ${{ steps.set_release_tag.outputs.make_latest }}
           prerelease: ${{ steps.set_release_tag.outputs.prerelease }}
           fail_on_unmatched_files: true
 
-      # Cleanup two‑step, stable releases are never accidentally deleted:
-      # (1) Exact deduplication by "version|sha" – builds of the same version on different commits
-      #     are never grouped together.
-      # (2) For prereleases only, cap to the latest KEEP releases; stable releases are not subject to this cap.
+      # Cleanup in two steps; stable releases are never deleted:
+      #  (1) dedup by "version|sha" — same-version builds with different commits
+      #      are never grouped together;
+      #  (2) cap only prereleases to the newest KEEP, stable releases excluded.
       - name: Cleanup old releases
         shell: pwsh
         env:
@@ -489,9 +493,9 @@ jobs:
           Write-Host "total vw-win-* releases: $($all.Count)"
           if ($all.Count -eq 0) { exit 0 }
 
-          # Group key = version | sha12. Non‑greedy + optional -rN suffix,
-          # compatible with both old and new tag formats, and avoids misinterpreting
-          # a large run_number as a sha.
+          # Group key = version | sha12. Non-greedy + optional -rN suffix:
+          # matches both old and new tag formats and avoids mistaking a very
+          # large run_number for a sha.
           function KeyOf($t) {
             if ($t -match '^vw-win-(.+?)-([0-9a-f]{12})(?:-(release|latest|custom))?(?:-r\d+)?$') {
               return "$($matches[1])|$($matches[2])"
@@ -525,8 +529,8 @@ jobs:
           }
           Write-Host "========== cleanup done: deleted $deleted releases =========="
 
-  # Failure notification: if check/build fails, open or update an issue (fixed title, no spam).
-  # The notification itself never fails the workflow.
+  # Failure notification: if check or build fails, create/append an issue with a
+  # fixed title (no spam). The notification itself never fails the workflow.
   notify:
     needs: [check, build]
     if: always() && (needs.check.result == 'failure' || needs.build.result == 'failure') && github.event_name != 'workflow_run'
