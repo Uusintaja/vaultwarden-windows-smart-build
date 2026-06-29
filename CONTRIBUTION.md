@@ -19,33 +19,24 @@ This is sometimes called a "benevolent dictator" model: fully transparent, but w
 
 ## We welcome feedback via Issues
 
-While code contributions through PRs are not the model here, **feedback is highly valued and is the primary way to influence this project.** Please open an issue for any of the following:
+While code contributions through PRs are not accepted, **bug reports and security concerns are welcome via GitHub Issues.** 
 
-| Use case | Example |
-|---|---|
-| 🐛 **Report a broken or stale binary** | A release crashes on launch, or a published version is far behind upstream. |
-| 🏷️ **Request a specific version** | You need a build of a particular older release or commit that isn't published yet. |
-| 💡 **Suggest an improvement** | A different feature set, a smaller binary, better release notes, etc. |
-| 🔒 **Report a security concern** | Anything about the binary, the pipeline, or the published artifacts. |
-| 📝 **Point out a documentation gap** | Something in the README or ARCHITECTURE.md that is unclear or missing. |
+Please open an issue if you encounter:
+- 🐛 **Bugs or broken builds**: The release crashes, fails to run, or has obvious functional regressions.
+- 🔒 **Security concerns**: Any potential vulnerabilities in the build pipeline or published artifacts.
+- 📝 **Documentation gaps**: Unclear setup instructions or missing details in the README.
 
-### Tips for a useful issue
-
-- **Include the release tag** you are referring to (e.g. `vw-win-v1.36.0-f21a3adae2fb-r6`).
-- **Describe what you expected vs. what happened.** Logs, error messages, and your Windows version help a lot.
-- **For version requests**, state the exact upstream tag or commit you want built.
-
-### How requests are handled
-
-- Version-build requests are acted on by the maintainer using the pipeline's `custom` mode (no action needed from you beyond the request).
-- Bug reports are triaged and, where confirmed, fixed by the maintainer and re-published.
-- Security reports can also be sent privately if you prefer — see the contact details below (if none are listed here, open an issue marked "security" and the maintainer will follow up).
+### Please Note
+- **No ETA / No Guarantees**: This is a personal, hobbyist-maintained repository. Issues will be reviewed and addressed solely at the maintainer's convenience.
+- **For custom needs, please fork**: If you need a specific version, a different feature set, or a custom build configuration, please follow the **Forking** section below and build it yourself.
 
 ---
 
 ## Forking
 
-If you want full control — different features, a different platform target, your own release cadence — **fork the repository**. Everything you need is in `.github/workflows/vaultwarden-build.yml` plus `.github/dependabot.yml`. Read [ARCHITECTURE.md](./ARCHITECTURE.md) to understand how to adapt it.
+If you want full control — different features, a different platform target, your own release cadence — **fork the repository**. Everything you need is in `.github/workflows/vaultwarden-build.yml` and `.github/dependabot.yml`. Read [ARCHITECTURE.md](./ARCHITECTURE.md) to understand how to adapt it.
+
+If you only want to use a specific version, click `GitHub Actions` -> `Vaultwarden Smart Build` -> `Run Workflow`, change the `version selection` to `custom`, and then type the corresponding version number below.
 
 ---
 
