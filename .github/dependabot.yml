@@ -1,0 +1,34 @@
+# Dependabot — auto-updates SHA-pinned GitHub Actions
+#
+# Why this file exists:
+#   vaultwarden-build.yml pins every Action to an immutable commit SHA (defense
+#   against supply-chain attacks). But immutability also means security fixes
+#   are not picked up automatically. Dependabot checks these Actions weekly; if
+#   a new version is available it opens a PR that updates the SHA (preserving
+#   the trailing "# vX" comment). Manual review + merge is all that's needed.
+#
+# Deploy: place at .github/dependabot.yml in the repository.
+# Requires: Settings → Code security → Dependabot enabled (on by default for public repos).
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"          # weekly is enough; Action security updates need not be more frequent
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      # Group minor updates from the same Action ecosystem into one PR to reduce noise
+      github-actions:
+        patterns:
+          - "actions/*"
+          - "softprops/*"
+          - "dtolnay/*"
+          - "Swatinem/*"
