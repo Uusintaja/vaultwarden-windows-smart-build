@@ -24,6 +24,11 @@ on:
         required: false
         default: false
         type: boolean
+      simulate_schedule:
+        description: "Simulate schedule mode (test only)"
+        required: false
+        default: false
+        type: boolean
 
 # Scheduled and manual release use the same concurrency group (build same version,
 # concurrency avoids wasting Windows quota and prevents cleanup race).
@@ -63,9 +68,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INP_TAG_CHOICE: ${{ github.event.inputs.tag_choice }}
           INP_TAG: ${{ github.event.inputs.tag }}
+          SIMULATE_SCHEDULE: ${{ github.event.inputs.simulate_schedule }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "schedule" ]; then
+          simulate="${SIMULATE_SCHEDULE:-false}"
+          if [ "$EVENT_NAME" = "schedule" ] || [ "$simulate" = "true" ]; then
             mode="release"
             custom=""
           else
@@ -76,6 +83,7 @@ jobs:
           {
             echo "mode=$mode"
             echo "custom=$custom"
+            echo "simulate_schedule=$([ "$simulate" = "true" ] && echo true || echo false)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Get latest upstream tag
@@ -131,7 +139,7 @@ jobs:
       # (does not rely on cache that may become stale).
       - name: Resolve target commit sha
         id: deref_sha
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || steps.resolve.outputs.simulate_schedule == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.target_version.outputs.target_tag }}
@@ -164,10 +172,11 @@ jobs:
           VER: ${{ steps.target_version.outputs.upstream_version }}
           SHA: ${{ steps.deref_sha.outputs.target_sha }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
+          SIMULATE_SCHEDULE: ${{ steps.resolve.outputs.simulate_schedule }}
         run: |
           set -euo pipefail
           should=true; reason="manual"
-          if [ "$EVENT_NAME" = "schedule" ]; then
+          if [ "$EVENT_NAME" = "schedule" ] || [ "${SIMULATE_SCHEDULE:-false}" = "true" ]; then
             # Check own releases for any existing build of this version@commit.
             # Does not rely on actions/cache LRU behaviour.
             found=false
