@@ -30,5 +30,5 @@ updates:
         patterns:
           - "actions/*"
           - "softprops/*"
-          - "dtolnay/*"
+          - "actions-rust-lang/*"
           - "Swatinem/*"
